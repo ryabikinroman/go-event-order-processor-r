@@ -8,6 +8,7 @@ import (
 var (
 	ErrInvalidAmount     = errors.New("invalid amount")
 	ErrInvalidCustomerID = errors.New("invalid customer ID")
+	ErrInvalidCurrency   = errors.New("invalid currency")
 	ErrOrderNotFound     = errors.New("order not found")
 )
 
@@ -30,19 +31,34 @@ type Order struct {
 	UpdatedAt  time.Time
 }
 
+var validCurrencies = map[string]bool{
+	"USD": true,
+	"EUR": true,
+	"GBP": true,
+	"JPY": true,
+	"CNY": true,
+}
+
 func NewOrder(customerID string, amount float64) (*Order, error) {
+	return NewOrderWithCurrency(customerID, amount, "USD")
+}
+
+func NewOrderWithCurrency(customerID string, amount float64, currency string) (*Order, error) {
 	if customerID == "" {
 		return nil, ErrInvalidCustomerID
 	}
 	if amount <= 0 {
 		return nil, ErrInvalidAmount
 	}
+	if !validCurrencies[currency] {
+		return nil, ErrInvalidCurrency
+	}
 
 	now := time.Now()
 	return &Order{
 		CustomerID: customerID,
 		Amount:     amount,
-		Currency:   "USD",
+		Currency:   currency,
 		Status:     StatusPending,
 		CreatedAt:  now,
 		UpdatedAt:  now,

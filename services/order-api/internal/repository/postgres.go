@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
 	_ "github.com/lib/pq"
 	"github.com/yourusername/go-event-order-processor/services/order-api/internal/domain"
@@ -104,6 +105,8 @@ func NewDB(connString string) (*sql.DB, error) {
 
 	db.SetMaxOpenConns(25)
 	db.SetMaxIdleConns(5)
+	db.SetConnMaxLifetime(time.Hour)
+	db.SetConnMaxIdleTime(10 * time.Minute)
 
 	return db, nil
 }

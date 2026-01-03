@@ -29,6 +29,11 @@ type Handler struct {
 	repo     domain.OrderRepository
 	producer *producer.KafkaProducer
 	log      *logger.Logger
+	db       HealthChecker
+}
+
+type HealthChecker interface {
+	Ping() error
 }
 
 func NewHandler(repo domain.OrderRepository, producer *producer.KafkaProducer, log *logger.Logger) *Handler {
@@ -39,9 +44,29 @@ func NewHandler(repo domain.OrderRepository, producer *producer.KafkaProducer, l
 	}
 }
 
+func (h *Handler) SetHealthChecker(db HealthChecker) {
+	h.db = db
+}
+
 type CreateOrderRequest struct {
 	CustomerID string  `json:"customer_id"`
 	Amount     float64 `json:"amount"`
+}
+
+func (req *CreateOrderRequest) Validate() error {
+	if req.CustomerID == "" {
+		return domain.ErrInvalidCustomerID
+	}
+	if len(req.CustomerID) > 255 {
+		return domain.ErrInvalidCustomerID
+	}
+	if req.Amount <= 0 {
+		return domain.ErrInvalidAmount
+	}
+	if req.Amount > 1000000000 {
+		return domain.ErrInvalidAmount
+	}
+	return nil
 }
 
 type OrderResponse struct {
@@ -57,9 +82,17 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 	timer := prometheus.NewTimer(httpDuration.WithLabelValues("/api/v1/orders", "POST"))
 	defer timer.ObserveDuration()
 
+	// Limit request body size to prevent DoS attacks (1MB limit)
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+
 	var req CreateOrderRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if err := req.Validate(); err != nil {
+		h.respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -110,6 +143,19 @@ func (h *Handler) GetOrder(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+
+	// Check database connectivity
+	if h.db != nil {
+		if err := h.db.Ping(); err != nil {
+			h.log.Errorw("Database health check failed", "error", err)
+			w.WriteHeader(http.StatusServiceUnavailable)
+			if _, writeErr := w.Write([]byte(`{"status":"unhealthy","reason":"database connection failed"}`)); writeErr != nil {
+				h.log.Errorw("Failed to write health response", "error", writeErr)
+			}
+			return
+		}
+	}
+
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write([]byte(`{"status":"healthy"}`)); err != nil {
 		h.log.Errorw("Failed to write health response", "error", err)

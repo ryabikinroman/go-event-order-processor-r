@@ -56,13 +56,18 @@ func main() {
 	// Initialize handler
 	repo := repository.NewPostgresRepository(db)
 	h := handler.NewHandler(repo, kafkaProducer, log)
+	h.SetHealthChecker(db)
 
 	// Setup router
 	r := mux.NewRouter()
 	r.HandleFunc("/health", h.Health).Methods("GET")
 	r.Handle("/metrics", promhttp.Handler()).Methods("GET")
-	r.HandleFunc("/api/v1/orders", h.CreateOrder).Methods("POST")
-	r.HandleFunc("/api/v1/orders/{id}", h.GetOrder).Methods("GET")
+
+	// Apply middleware to API routes
+	api := r.PathPrefix("/api/v1").Subrouter()
+	api.Use(handler.CorrelationIDMiddleware)
+	api.HandleFunc("/orders", h.CreateOrder).Methods("POST")
+	api.HandleFunc("/orders/{id}", h.GetOrder).Methods("GET")
 
 	port := getEnv("PORT", "8080")
 	server := &http.Server{
@@ -70,6 +75,7 @@ func main() {
 		Handler:      r,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
 	}
 
 	go func() {

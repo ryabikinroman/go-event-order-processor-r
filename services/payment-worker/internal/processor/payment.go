@@ -3,7 +3,7 @@ package processor
 import (
 	"context"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -62,10 +62,10 @@ func (p *Processor) ProcessPayment(ctx context.Context, event events.OrderCreate
 	)
 
 	// Симуляция обработки платежа
-	time.Sleep(time.Duration(rand.Intn(500)+100) * time.Millisecond)
+	time.Sleep(time.Duration(rand.IntN(500)+100) * time.Millisecond)
 
 	// Симуляция случайных ошибок (10% вероятность)
-	if rand.Intn(10) == 0 {
+	if rand.IntN(10) == 0 {
 		paymentsProcessed.WithLabelValues("failed").Inc()
 		return fmt.Errorf("payment gateway error: random failure")
 	}

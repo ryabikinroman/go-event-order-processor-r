@@ -63,11 +63,18 @@ func main() {
 	log.Info("Kafka consumer initialized")
 
 	// Start metrics server
+	metricsPort := getEnv("METRICS_PORT", "8081")
+	metricsServer := &http.Server{
+		Addr:         ":" + metricsPort,
+		Handler:      promhttp.Handler(),
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+
 	go func() {
-		http.Handle("/metrics", promhttp.Handler())
-		port := getEnv("METRICS_PORT", "8081")
-		log.Infow("Metrics server started", "port", port)
-		if err := http.ListenAndServe(":"+port, nil); err != nil {
+		log.Infow("Metrics server started", "port", metricsPort)
+		if err := metricsServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Errorw("Metrics server failed", "error", err)
 		}
 	}()
@@ -92,7 +99,15 @@ func main() {
 	log.Info("Shutting down worker...")
 	cancel()
 
-	// Give some time for graceful shutdown
+	// Shutdown metrics server gracefully
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutdownCancel()
+
+	if err := metricsServer.Shutdown(shutdownCtx); err != nil {
+		log.Errorw("Metrics server forced to shutdown", "error", err)
+	}
+
+	// Give some time for consumer to finish processing
 	time.Sleep(5 * time.Second)
 
 	log.Info("Worker exited")
