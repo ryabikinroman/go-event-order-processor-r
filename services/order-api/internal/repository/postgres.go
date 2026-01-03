@@ -18,6 +18,57 @@ func NewPostgresRepository(db *sql.DB) *PostgresRepository {
 	return &PostgresRepository{db: db}
 }
 
+// CreateWithOutbox creates order and outbox message in a single transaction
+func (r *PostgresRepository) CreateWithOutbox(ctx context.Context, order *domain.Order, outboxMsg *domain.OutboxMessage) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Insert order
+	orderQuery := `
+		INSERT INTO orders (id, customer_id, amount, currency, status, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+	`
+	_, err = tx.ExecContext(ctx, orderQuery,
+		order.ID,
+		order.CustomerID,
+		order.Amount,
+		order.Currency,
+		order.Status,
+		order.CreatedAt,
+		order.UpdatedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create order: %w", err)
+	}
+
+	// Insert outbox message
+	outboxQuery := `
+		INSERT INTO outbox (aggregate_id, aggregate_type, event_type, payload, created_at, retry_count)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		RETURNING id
+	`
+	err = tx.QueryRowContext(ctx, outboxQuery,
+		outboxMsg.AggregateID,
+		outboxMsg.AggregateType,
+		outboxMsg.EventType,
+		outboxMsg.Payload,
+		outboxMsg.CreatedAt,
+		outboxMsg.RetryCount,
+	).Scan(&outboxMsg.ID)
+	if err != nil {
+		return fmt.Errorf("failed to create outbox message: %w", err)
+	}
+
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
+}
+
 func (r *PostgresRepository) Create(ctx context.Context, order *domain.Order) error {
 	query := `
 		INSERT INTO orders (id, customer_id, amount, currency, status, created_at, updated_at)

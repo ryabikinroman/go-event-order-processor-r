@@ -10,11 +10,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/IBM/sarama"
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/yourusername/go-event-order-processor/pkg/logger"
 	"github.com/yourusername/go-event-order-processor/services/order-api/internal/handler"
-	"github.com/yourusername/go-event-order-processor/services/order-api/internal/producer"
+	"github.com/yourusername/go-event-order-processor/services/order-api/internal/outbox"
 	"github.com/yourusername/go-event-order-processor/services/order-api/internal/repository"
 )
 
@@ -43,9 +44,14 @@ func main() {
 
 	log.Info("Connected to PostgreSQL")
 
-	// Initialize Kafka producer
+	// Initialize Kafka producer for outbox processor
 	brokers := strings.Split(getEnv("KAFKA_BROKERS", "localhost:9092"), ",")
-	kafkaProducer, err := producer.NewKafkaProducer(brokers, log)
+	config := sarama.NewConfig()
+	config.Producer.RequiredAcks = sarama.WaitForAll
+	config.Producer.Retry.Max = 3
+	config.Producer.Return.Successes = true
+
+	kafkaProducer, err := sarama.NewSyncProducer(brokers, config)
 	if err != nil {
 		log.Fatalw("Failed to create Kafka producer", "error", err)
 	}
@@ -53,18 +59,43 @@ func main() {
 
 	log.Info("Kafka producer initialized")
 
-	// Initialize handler
+	// Initialize repositories
 	repo := repository.NewPostgresRepository(db)
-	h := handler.NewHandler(repo, kafkaProducer, log)
+	outboxRepo := repository.NewOutboxRepository(db)
+
+	// Initialize handler with outbox support
+	h := handler.NewOutboxHandler(repo, log)
 	h.SetHealthChecker(db)
+
+	// Start outbox processor
+	outboxProcessor := outbox.NewProcessor(
+		outboxRepo,
+		kafkaProducer,
+		log,
+		2*time.Second, // Process every 2 seconds
+		10,            // Batch size
+	)
+
+	outboxCtx, outboxCancel := context.WithCancel(context.Background())
+	defer outboxCancel()
+
+	go func() {
+		if err := outboxProcessor.Start(outboxCtx); err != nil && err != context.Canceled {
+			log.Errorw("Outbox processor failed", "error", err)
+		}
+	}()
 
 	// Setup router
 	r := mux.NewRouter()
 	r.HandleFunc("/health", h.Health).Methods("GET")
 	r.Handle("/metrics", promhttp.Handler()).Methods("GET")
 
+	// Initialize rate limiter (100 requests per minute per IP with burst of 20)
+	rateLimiter := handler.NewRateLimiter(100.0/60.0, 20)
+
 	// Apply middleware to API routes
 	api := r.PathPrefix("/api/v1").Subrouter()
+	api.Use(rateLimiter.Limit)
 	api.Use(handler.CorrelationIDMiddleware)
 	api.HandleFunc("/orders", h.CreateOrder).Methods("POST")
 	api.HandleFunc("/orders/{id}", h.GetOrder).Methods("GET")
@@ -92,6 +123,10 @@ func main() {
 
 	log.Info("Shutting down server...")
 
+	// Stop outbox processor
+	outboxCancel()
+
+	// Shutdown HTTP server
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
