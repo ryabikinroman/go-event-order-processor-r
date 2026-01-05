@@ -122,6 +122,12 @@ func (h *OutboxHandler) GetOrder(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id := vars["id"]
 
+	// Validate UUID format
+	if _, err := uuid.Parse(id); err != nil {
+		h.respondError(w, http.StatusBadRequest, "invalid order id format")
+		return
+	}
+
 	order, err := h.repo.GetByID(ctx, id)
 	if err == domain.ErrOrderNotFound {
 		h.respondError(w, http.StatusNotFound, "order not found")

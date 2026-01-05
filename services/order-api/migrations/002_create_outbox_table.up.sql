@@ -12,6 +12,6 @@ CREATE TABLE IF NOT EXISTS outbox (
     CONSTRAINT fk_order FOREIGN KEY (aggregate_id) REFERENCES orders(id) ON DELETE CASCADE
 );
 
-CREATE INDEX idx_outbox_processed ON outbox(processed_at) WHERE processed_at IS NULL;
+CREATE INDEX idx_outbox_unprocessed ON outbox(processed_at, retry_count, created_at) WHERE processed_at IS NULL AND retry_count < 5;
 CREATE INDEX idx_outbox_created_at ON outbox(created_at DESC);
 CREATE INDEX idx_outbox_aggregate ON outbox(aggregate_id, aggregate_type);

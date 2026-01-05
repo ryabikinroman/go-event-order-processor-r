@@ -10,6 +10,7 @@ require (
 	github.com/prometheus/client_golang v1.20.5
 	github.com/yourusername/go-event-order-processor/pkg/events v0.0.0
 	github.com/yourusername/go-event-order-processor/pkg/logger v0.0.0
+	golang.org/x/time v0.14.0
 )
 
 require (
@@ -40,7 +41,6 @@ require (
 	golang.org/x/crypto v0.26.0 // indirect
 	golang.org/x/net v0.28.0 // indirect
 	golang.org/x/sys v0.23.0 // indirect
-	golang.org/x/time v0.14.0 // indirect
 	google.golang.org/protobuf v1.34.2 // indirect
 )
 

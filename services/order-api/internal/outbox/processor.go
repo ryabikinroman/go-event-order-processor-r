@@ -31,10 +31,10 @@ var (
 )
 
 type Processor struct {
-	repo     domain.OutboxRepository
-	producer sarama.SyncProducer
-	log      *logger.Logger
-	interval time.Duration
+	repo      domain.OutboxRepository
+	producer  sarama.SyncProducer
+	log       *logger.Logger
+	interval  time.Duration
 	batchSize int
 }
 
@@ -74,7 +74,10 @@ func (p *Processor) Start(ctx context.Context) error {
 }
 
 func (p *Processor) processBatch(ctx context.Context) {
-	messages, err := p.repo.GetUnprocessed(ctx, p.batchSize)
+	queryCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	messages, err := p.repo.GetUnprocessed(queryCtx, p.batchSize)
 	if err != nil {
 		p.log.Errorw("Failed to get unprocessed outbox messages", "error", err)
 		return

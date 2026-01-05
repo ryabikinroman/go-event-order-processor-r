@@ -11,10 +11,11 @@ import (
 
 // RateLimiter implements per-IP rate limiting using token bucket algorithm
 type RateLimiter struct {
-	limiters map[string]*rate.Limiter
-	mu       sync.RWMutex
-	rate     rate.Limit
-	burst    int
+	limiters    map[string]*rate.Limiter
+	mu          sync.RWMutex
+	rate        rate.Limit
+	burst       int
+	cleanupOnce sync.Once
 }
 
 // NewRateLimiter creates a new rate limiter
@@ -60,8 +61,10 @@ func (rl *RateLimiter) cleanup() {
 
 // Limit is a middleware that applies rate limiting per IP
 func (rl *RateLimiter) Limit(next http.Handler) http.Handler {
-	// Start cleanup goroutine
-	go rl.cleanup()
+	// Start cleanup goroutine only once
+	rl.cleanupOnce.Do(func() {
+		go rl.cleanup()
+	})
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ip := getIP(r)

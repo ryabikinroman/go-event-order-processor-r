@@ -44,7 +44,7 @@ func (r *OutboxRepository) GetUnprocessed(ctx context.Context, limit int) ([]*do
 	query := `
 		SELECT id, aggregate_id, aggregate_type, event_type, payload, created_at, processed_at, retry_count, last_error
 		FROM outbox
-		WHERE processed_at IS NULL
+		WHERE processed_at IS NULL AND retry_count < 5
 		ORDER BY created_at ASC
 		LIMIT $1
 	`

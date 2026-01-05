@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	AggregateTypeOrder = "order"
+	AggregateTypeOrder    = "order"
 	EventTypeOrderCreated = "order.created"
 )
 

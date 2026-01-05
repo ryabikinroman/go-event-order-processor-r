@@ -372,7 +372,6 @@ curl http://localhost:8081/metrics | grep messages_sent_to_dlq_total
 
 Идеи для расширения проекта:
 - [ ] Unit tests (testify/mock)
-- [ ] Integration tests (testcontainers)
 - [ ] OpenAPI/Swagger спецификация
 - [ ] Distributed tracing (OpenTelemetry)
 - [ ] Circuit Breaker pattern
